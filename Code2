@@ -1,0 +1,128 @@
+#CODE2 #CODE2 #CODE2 #CODE2 #CODE2 #CODE2
+#CODE2 #CODE2 #CODE2 #CODE2 #CODE2 #CODE2
+#CODE2 #CODE2 #CODE2 #CODE2 #CODE2 #CODE2
+#CODE2 #CODE2 #CODE2 #CODE2 #CODE2 #CODE2
+#CODE2 #CODE2 #CODE2 #CODE2 #CODE2 #CODE2
+
+
+import yfinance as yf
+import numpy as np
+import matplotlib.pyplot as plt
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+import nltk
+nltk.download('vader_lexicon')
+
+def jump_diffusion_model(S0, mu, sigma, lambda_, jump_mean, jump_std, T, dt, num_simulations, sentiment_scores, external_risk_factor):
+    num_steps = int(T / dt)
+    t = np.linspace(0, T, num_steps + 1)
+    S = np.zeros((num_simulations, num_steps + 1))
+    S[:, 0] = S0
+
+    for i in range(1, num_steps + 1):
+        dW = np.sqrt(dt) * np.random.randn(num_simulations)
+        dN = np.random.poisson(lambda_ * dt, num_simulations)
+        J = np.random.normal(jump_mean, jump_std, num_simulations) * dN
+
+        # Incorporate sentiment analysis scores as a risk factor
+        mu_adj = mu + sentiment_scores[i - 1] * sentiment_weight
+
+        # Incorporate external risk factors
+        mu_adj += external_risk_factor[:, i - 1] * external_risk_factor_weight
+
+        S[:, i] = S[:, i - 1] * np.exp((mu_adj - 0.5 * sigma**2) * dt + sigma * dW + J)
+
+        # Event-driven jumps (for demonstration purposes, replace with actual event dates)
+        event_dates = [5, 15, 25]  # Example dates for events
+        if i in event_dates:
+            jump_index = np.where(t >= i)[0][0]
+            S[:, jump_index:] = S[:, jump_index:] * (1 + event_jump_factor)
+
+    return t, S
+
+def merton_model(S0, mu, sigma, lambda_, T, dt, num_simulations):
+    num_steps = int(T / dt)
+    t = np.linspace(0, T, num_steps + 1)
+    S = np.zeros((num_simulations, num_steps + 1))
+    S[:, 0] = S0
+
+    for i in range(1, num_steps + 1):
+        dW = np.sqrt(dt) * np.random.randn(num_simulations)
+        dN = np.random.poisson(lambda_ * dt, num_simulations)
+        J = np.random.normal(0, sigma, num_simulations) * dN
+
+        S[:, i] = S[:, i - 1] * np.exp((mu - 0.5 * sigma**2) * dt + sigma * dW + J)
+
+    return t, S
+
+# Fetch historical stock data for AMAT
+stock_symbol = "AMAT"
+start_date = "2020-11-09"
+end_date = "2023-11-09"
+stock_data = yf.download(stock_symbol, start=start_date, end=end_date)
+
+# Extracting closing prices
+closing_prices = stock_data['Adj Close'].values
+last_price = closing_prices[-1]  # Last closing price
+
+# Extracting news headlines for sentiment analysis (for demonstration purposes)
+stock_data['News_Headlines'] = ["Your News Headline for each day"] * len(stock_data)
+
+# Perform sentiment analysis on news headlines
+sia = SentimentIntensityAnalyzer()
+stock_data['Sentiment_Score'] = stock_data['News_Headlines'].apply(lambda x: sia.polarity_scores(x)['compound'])
+
+# Parameters for Jump Diffusion Model
+S0_jump = last_price  # Initial stock price for Jump Diffusion Model
+mu_jump = np.mean(np.diff(closing_prices) / closing_prices[:-1])  # Drift for Jump Diffusion Model
+sigma_jump = np.std(np.diff(closing_prices) / closing_prices[:-1])  # Volatility for Jump Diffusion Model
+lambda_jump = 0.1  # Jump intensity for Jump Diffusion Model
+jump_mean_jump = 0.0  # Jump mean for Jump Diffusion Model
+jump_std_jump = 0.1  # Jump standard deviation for Jump Diffusion Model
+T_jump = 15  # Time horizon for Jump Diffusion Model
+dt_jump = 1  # Time step for Jump Diffusion Model
+
+# Parameters for Merton Model
+S0_merton = last_price  # Initial stock price for Merton Model
+mu_merton = np.mean(np.diff(closing_prices) / closing_prices[:-1])  # Drift for Merton Model
+sigma_merton = np.std(np.diff(closing_prices) / closing_prices[:-1])  # Volatility for Merton Model
+lambda_merton = 0.1  # Jump intensity for Merton Model
+T_merton = 15  # Time horizon for Merton Model
+dt_merton = 1  # Time step for Merton Model
+
+# Number of simulations for both models
+num_simulations = 750
+
+# Additional parameters for sentiment analysis risk factor
+sentiment_weight = 0.001  # Adjust the weight based on the impact you want sentiment to have
+
+# Additional parameters for external risk factors
+external_risk_factor = np.random.randn(num_simulations, len(stock_data)) * 0.1  # Example external risk factors
+external_risk_factor_weight = 0.005  # Adjust the weight based on the impact you want external factors to have
+
+# Additional parameters for event-driven jumps
+event_jump_factor = 0.05  # Jump factor for event-driven jumps
+
+# Run the Jump Diffusion Model with sentiment analysis, external risk factors, and event-driven jumps
+t_jump, S_jump = jump_diffusion_model(S0_jump, mu_jump, sigma_jump, lambda_jump, jump_mean_jump, jump_std_jump,
+                                      T_jump, dt_jump, num_simulations, stock_data['Sentiment_Score'], external_risk_factor)
+
+# Run the Merton Model
+t_merton, S_merton = merton_model(S0_merton, mu_merton, sigma_merton, lambda_merton, T_merton, dt_merton, num_simulations)
+
+# Calculate the percentage of values above the last price
+above_last_price_jump = np.mean(S_jump[:, -1] > last_price) * 100
+above_last_price_merton = np.mean(S_merton[:, -1] > last_price) * 100
+
+print(f"Percentage of values above the last price for Jump Diffusion Model: {above_last_price_jump:.2f}%")
+print(f"Percentage of values above the last price for Merton Model: {above_last_price_merton:.2f}%")
+
+# Plotting the results for comparison
+plt.figure(figsize=(10, 6))
+plt.plot(t_jump, np.mean(S_jump, axis=0), label='Jump Diffusion Model', color='blue')
+plt.plot(t_merton, np.mean(S_merton, axis=0), label='Merton Model', color='orange')
+plt.axhline(last_price, linestyle='--', color='red', label='Last Price')
+plt.xlabel('Time')
+plt.ylabel('Stock Price')
+plt.title('Jump Diffusion Model vs. Merton Model for AMAT')
+plt.legend()
+plt.show()
